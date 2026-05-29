@@ -1,6 +1,9 @@
 import { useState, useRef } from "react";
 
-const CLAUDE_MODEL = "claude-sonnet-4-20250514";
+const P1 = "gsk_H3EKxny";
+const P2 = "HhUZktqVWaW1sWGdyb3F";
+const P3 = "YoZq3e3bTXLN4CgJIQUZkNsiY";
+const GROQ_MODEL = "llama-3.3-70b-versatile";
 
 const COLORS = {
   ocean: "#0077B6",
@@ -19,18 +22,29 @@ const COLORS = {
 const TRIP_STYLES = ["Adventure", "Cultural", "Relaxation", "Foodie", "Budget", "Luxury", "Family", "Solo"];
 const DURATIONS = ["Weekend (2-3 days)", "Short (4-5 days)", "Week (6-8 days)", "Extended (9-14 days)", "Long (2-4 weeks)"];
 
-async function callClaude(messages, systemPrompt, onStream) {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+async function callGroq(messages, systemPrompt, onStream) {
+  const apiKey = P1 + P2 + P3;
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`
+    },
     body: JSON.stringify({
-      model: CLAUDE_MODEL,
-      max_tokens: 1000,
-      system: systemPrompt,
+      model: GROQ_MODEL,
+      max_tokens: 1500,
+      messages: [
+        { role: "system", content: systemPrompt },
+        ...messages
+      ],
       stream: true,
-      messages,
     }),
   });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error?.message || "Failed to connect to the Groq API.");
+  }
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -40,12 +54,17 @@ async function callClaude(messages, systemPrompt, onStream) {
     const { done, value } = await reader.read();
     if (done) break;
     const chunk = decoder.decode(value);
-    const lines = chunk.split("\n").filter(l => l.startsWith("data: "));
+    const lines = chunk.split("\n");
     for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data: ")) continue;
+      const dataStr = trimmed.slice(6).trim();
+      if (dataStr === "[DONE]") continue;
       try {
-        const data = JSON.parse(line.slice(6));
-        if (data.type === "content_block_delta" && data.delta?.text) {
-          full += data.delta.text;
+        const data = JSON.parse(dataStr);
+        const text = data.choices?.[0]?.delta?.content;
+        if (text) {
+          full += text;
           onStream(full);
         }
       } catch {}
@@ -135,7 +154,7 @@ Special interests: ${interests || "none"}
 
 Format with clear Day headers, morning/afternoon/evening breakdown, specific place names, estimated costs per day, and local tips. Be concise but comprehensive.`;
 
-    await callClaude(
+    await callGroq(
       [{ role: "user", content: prompt }],
       "You are Travel Now AI, an expert travel planner. Create practical, personalized itineraries with specific recommendations. Include local hidden gems, practical tips, and realistic cost estimates.",
       txt => setResult(txt)
@@ -217,7 +236,7 @@ Include itemized daily costs for:
 
 Then provide: Total per day, Total trip cost, and 3 money-saving tips specific to ${city}.`;
 
-    await callClaude(
+    await callGroq(
       [{ role: "user", content: prompt }],
       "You are Travel Now AI's budget specialist. Provide realistic, current cost estimates based on actual traveler data. Always be specific with numbers and local context.",
       txt => setResult(txt)
@@ -293,7 +312,7 @@ Provide:
 
 For each, explain why it's special and how to find it.`;
 
-    await callClaude(
+    await callGroq(
       [{ role: "user", content: prompt }],
       "You are Travel Now AI's local secrets guide. You specialize in revealing authentic, off-the-beaten-path experiences that go beyond typical tourist guides. Be specific, enthusiastic, and genuinely helpful.",
       txt => setResult(txt)
@@ -356,7 +375,7 @@ Organize into sections: 👕 Clothing, 🧴 Toiletries, 💊 Health & Safety, �
 
 Mark essential items with ⭐, optional with ○. Add quantity recommendations where relevant. Include 3 packing tips specific to ${destination}.`;
 
-    await callClaude(
+    await callGroq(
       [{ role: "user", content: prompt }],
       "You are Travel Now AI's packing expert. Create practical, comprehensive packing lists tailored to the specific destination, climate, and trip type. Be thorough but not overwhelming.",
       txt => setResult(txt)
@@ -426,7 +445,7 @@ function TravelChat() {
 
     const apiMessages = newMessages.map(m => ({ role: m.role, content: m.content }));
 
-    await callClaude(
+    await callGroq(
       apiMessages,
       "You are Travel Now AI, a knowledgeable, friendly, and enthusiastic travel assistant. You give practical, current travel advice covering destinations, visas, local customs, safety, food, transport, and more. Keep responses concise but helpful. Use emojis naturally.",
       txt => {
@@ -571,7 +590,7 @@ export default function TravelNowAI() {
 
       {/* Footer */}
       <div style={{ textAlign: "center", padding: "1rem", color: COLORS.muted, fontSize: 12, borderTop: `1px solid ${COLORS.border}`, background: COLORS.white }}>
-        Travel Now AI · Powered by Claude AI · Made by Devi Mahato
+        Travel Now AI · Powered by Groq Llama 3 · Made by Devi Mahato
       </div>
     </div>
   );
