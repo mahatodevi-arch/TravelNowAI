@@ -67,7 +67,7 @@ async function callGroq(messages, systemPrompt, onStream) {
           full += text;
           onStream(full);
         }
-      } catch {}
+      } catch { }
     }
   }
   return full;
